@@ -4,11 +4,14 @@ import numpy as np
 import statsmodels.api as sm
 import json
 import matplotlib.pyplot as plt
+import holidays
+
+###########################data 
 
 dt_TZ = '2005-06-20' # commencement of 7.75-7.85 target zone (three refinements https://www.hkma.gov.hk/eng/news-and-media/press-releases/2005/05/20050518-4/)
 dt_GFC_end = '2009-06-01' # NBER recession https://www.nber.org/research/data/us-business-cycle-expansions-and-contractions
-dt_training = '2019-12-31' # data before that date is used for training
-dt_end = '2025-06-30' # end date of data
+dt_training = '2020-01-01' # data before that date is used for training
+dt_end = '2021-06-30' # end date of data
 
 def get_hkma_api(api_url, offset=0, **kwargs):
     result = requests.get(api_url, params={'pagesize': 1000, 'offset': offset, **kwargs}).json()
@@ -31,6 +34,8 @@ df_IL = pd.DataFrame(get_hkma_api('https://api.hkma.gov.hk/public/market-data-an
 # monthly from HKMA
 df_BS = pd.DataFrame(get_hkma_api('https://api.hkma.gov.hk/public/market-data-and-statistics/monthly-statistical-bulletin/banking/balance-sheet-ais')).eval('end_of_month = @pd.to_datetime(end_of_month).add(@pd.offsets.MonthEnd())', engine = 'python').set_index('end_of_month').sort_index()
 df_MS = pd.DataFrame(get_hkma_api('https://api.hkma.gov.hk/public/market-data-and-statistics/monthly-statistical-bulletin/money/supply-components-hkd')).eval('end_of_month = @pd.to_datetime(end_of_month).add(@pd.offsets.MonthEnd())', engine = 'python').set_index('end_of_month').sort_index()
+
+df_MS.to_csv('./df_MS.csv')
 
 # from C&SD
 df_NGDP = (
@@ -73,99 +78,177 @@ df_IIP_R = (
     .set_index(['period', 'IIP_COMPONENT'])['figure'].unstack()
 ) #quarterly 
 
-df_daily_raw = pd.concat([df_HKDF['hkd_fer_spot'], df_HIBOR['ir_overnight'].fillna(df_IL['hibor_overnight']), df_FX['usd'], df_MB['mb_bf_disc_win_total'], df_MO['closing_balance'], df_IL['disc_win_base_rate'], df_EFFR['percentRate']], axis=1)
-df_monthly_raw = pd.concat([df_BS, df_MS], axis=1)
-df_quarterly_raw = pd.concat([df_NGDP, df_BOP_R, df_IIP_R], axis=1)
+df_raw = pd.concat(
+    [df_HIBOR['ir_overnight'].fillna(df_IL['hibor_overnight']), df_FX['usd']], axis=1
+    ).assign(
+        MZMe_t = df_MS['demand_deposits_with_lb'] + df_MS['savings_deposits_with_lb']
+    ).pipe(
+        lambda df: df[df.index.to_series().apply(lambda x: x.weekday() < 5 and x not in holidays.HongKong(years=range(2004,2026)))]
+    ).dropna()
 
-#if dropna then asfreq --> missing data error: exog contains inf or nans
-#if asfreq than dropna, or only dropna or only asfreq --> value warning: no associated frequency
 
-''' check missing values
-for date, row in df_daily_adjusted.iterrows():
-    missing_info = []
-    missing_columns = row.index[row.isnull()].tolist()  
-    if missing_columns:  # If there are missing columns
-        missing_info.append((date, missing_columns))
-missing_df = pd.DataFrame(missing_info, columns=['Date', 'Missing_Columns'])
-'''
+df_training_set = df_raw[(df_raw.index > dt_TZ) & (df_raw.index < dt_training)]
+df_full_actual_set = df_raw[(df_raw.index > dt_TZ) & (df_raw.index <= dt_end)]
 
-df_daily_training = df_daily_raw[(df_daily_raw.index > dt_TZ) & (df_daily_raw.index < dt_training)].asfreq('B').bfill() #bfill() or fillna(avg of +1 and -1) #change this to working day hong kong
-df_daily_forecasting = df_daily_raw[(df_daily_raw.index > dt_TZ) & (df_daily_raw.index <= dt_end)].asfreq('B').bfill()
 
-#model AR1 and AR(p)
+#### main.py
+# from data_lers_beachmark import *
+# [var.to_pickle(f'./data/dataframe/{name}.pkl') for name, var in globals().items() if name[:3] == 'df_']
 
-# -test stationary:
+
+for name in path.search('./data/dataframe/'):
+    globals()[name <- remove .pkl suffix] = pd.read_pickle(... name)
+
+
+class LERSBenchmark:
+    file_path = ''
+    model_list = []
+    var_test = []
+    in_result = []
+    def __init__(self, model_list, var_to_test, freq_to_test, name='./output'):
+        self.model_list = model_list
+
+
+    def run_in_sample():
+        for model in self.model_list():
+            # for var in var_test
+            #    for freq in freq_test:
+            #      if var[0] == 'M' and freq == 'D': 
+            #         continue
+            #      model.fit()
+            #      in_result[model.name] = model.implied_hist_value()
+            # check whether model can handle this test,
+            # if not,
+            # continue
+    
+    def run_outsampele():
+        ss
+
+    def save_result(self, name):
+
+    def generate_figure(self, name):
+        .to_figure().jpg
+
+
+# import argparse
+
+if == 'main':
+    bench = LERSBenchmark(...)
+    bench.run_in_sample('')
+    bench.save_result('')
+
+
+class base_model:
+    name = ''
+    # some properties that tells what can this model handle and what can't
+    def __init__(self, ...., data, name, ....):
+        # what can this model handle and what can't
+        return
+    
+    def fit():
+        return
+    #....
+
+class ar1_model(base_model):
+    def __init__():
+        super().__init__(name='AR(1)')
+
+####################main#########################
+
+def forecasting_power(dataset):
+    dfs = pd.DataFrame(
+        {'ar_st': np.sqrt(np.mean((dataset['ar_st']-dataset['actual']).pow(0.5))),
+        'ar_rl': np.sqrt(np.mean((dataset['ar_rl']-dataset['actual'])**2)),
+        'var_st': np.sqrt(np.mean((dataset['var_st']-dataset['actual'])**2)),
+        'var_rl': np.sqrt(np.mean((dataset['var_rl']-dataset['actual'])**2))}
+    )
+    return dfs
+    
+def combine_fc_powers(datasets):
+    combined_list = pd.concat([forecasting_power(df) for df in datasets], axis=0)
+    combined_list.to_csv('./forecasting_powers.csv')
+    return combined_list 
+
+
+####################################model AR1 and AR(p)
+
+# test stationary:
+
+# check autocorrelation
 
 #forecast:
-def find_p_AR(data, maxlag): #input column, maxlag
+
+def find_p_AR(data): 
     results_p_AR = []
-    for i in range(1, maxlag):
+    for i in range(1, 10): #30 is maxlag assumed
         results_p_AR.append(sm.tsa.AutoReg(data, lags=i).fit().bic)
     return results_p_AR.index(min(results_p_AR))+1
 
-def model_AR_forecast_rolling(data): #input column, parameters can be removed
-    rolling_forecast_AR = []
-    parameters = []
-    lag = 3 #find_p_AR(data)
-    for i in range(0, 300): #not sure why needs to be 2*lag + 1, but if smaller than this it returns error not enough datapoints / cannot be divided by 0, #check kcross validation/constant width of time window?
-        if i > 2*lag+1:
-            rolling_forecast_AR.append((sm.tsa.AutoReg(data.iloc[:i], lags=lag).fit().predict(start=i, end=i)).iloc[0])
-            parameters.append(sm.tsa.AutoReg(data.iloc[:i], lags=lag).fit().params)
-        else:
-            rolling_forecast_AR.append(data.iloc[i])
-            parameters.append(0)
-    forecast_df = pd.DataFrame(rolling_forecast_AR, columns=['Forecasted_Values'], index=data.index[:300])
-    return forecast_df # parameters
+def model_AR_forecast_rolling(t_data, e_data): #should input full time length #trained with 2005-2020, **expanding window** forecast 2021-2025, Y = ßX + residual, 
+    lag = find_p_AR(t_data)
+    dfs = []
+    for i in range(len(t_data), len(e_data)):
+        dfs.append(
+            pd.DataFrame({
+            'ar_rl': [sm.tsa.AutoReg(e_data[:i], lags=lag).fit().predict(start=i, end=i).iloc[0]],
+        }, index=[e_data.index[i]])
+        )
+    forecast = pd.concat(dfs)
+    return forecast
 
-def model_AR_forecast_static(data): #input column, change training set to forecast set if want to use data up till 2019 only
-    lag = find_p_AR(data)
-    forecast_value = sm.tsa.AutoReg(data, lags=lag).fit().model.predict(sm.tsa.AutoReg(data, lags=lag).fit().params, start=dt_training, end=dt_end)
-    #forecast_value.index = df_daily_forecasting.index[len(df_daily_training):]
-    return forecast_value
+def model_AR_forecast_static(t_data, e_data): #trained with 2005-2020, forecast 2021-2025, Y = ßX + residual, ß=(X'X)X'Y (OLS)
+    lag = find_p_AR(t_data)
+    forecast = pd.DataFrame({'ar_st': sm.tsa.AutoReg(t_data, lags=lag).fit().predict(start=len(t_data), end=len(e_data)-1)}).set_index(e_data.index[len(t_data):])
+    return forecast
 
-print(model_AR_forecast_static(df_daily_training['usd']))
+####################################model VAR and VAR(p)
 
-#model VAR and VAR(p)
+def model_VAR_forecast_rolling(t_data, e_data):
+    dfs = []
+    for i in range(len(t_data.index), len(e_data.index)): 
+        fitted_model = sm.tsa.VAR(e_data[:i]).fit(maxlags=10, ic='bic')
+        df = pd.DataFrame(
+            {'var_rl': fitted_model.forecast(y=e_data.values[i-fitted_model.k_ar:i], steps=1)[0][0]}, 
+            index = [e_data.index[i]]  
+        ) 
+        dfs.append(df)
+    forecast = pd.concat(dfs)
+    return forecast
 
-def model_VAR_forecast_static(data): 
-    #Causality test
-    #Stationary test
-    results = pd.DataFrame(sm.tsa.VAR(data)
-                            .fit(maxlags=20, ic='bic')
-                            .forecast(y=data.values[-sm.tsa.VAR(data)
-                            .fit(maxlags=20, ic='bic').k_ar:],
-                            steps=len(df_daily_forecasting)-len(df_daily_training)), 
-                            columns=list(map(lambda x: x + 'forecast', data.columns)), 
-                            index=df_daily_forecasting.index[len(df_daily_training):])
-    return results
+###################################create dataset:
 
-def model_VAR_forecast_rolling(data):
-    results = pd.DataFrame(columns=list(map(lambda x: x + 'forecast', data.columns)))
-    lag = 1 #find_p_AR(data)
-    for i in range(0, 60): #not sure why needs to be 2*lag + 1, but if smaller than this it returns error not enough datapoints / cannot be divided by 0, #check kcross validation/constant width of time window?
-        if i > 2*lag+1:
-            pd.concat([results, sm.tsa.VAR(data.iloc[:i]).fit(1).forecast(y=data[1:],steps=1)], axis=0) #'''.values[-sm.tsa.VAR(data.iloc[:i]).fit(maxlags=1, ic='bic').k_ar:], steps=1)]'''
-            # parameters.append(sm.tsa.AutoReg(data.iloc[:i-1], lags=lag).fit().params)
-        else:
-            pd.concat([results, data.iloc[i]], axis=0)
-            # parameters.append(0)
-    return results
+usd_dataset = pd.DataFrame({
+    'actual': df_full_actual_set['usd'], 
+    'ar_static': model_AR_forecast_static(df_training_set['usd'], df_full_actual_set['usd']),
+    'ar_rolling': model_AR_forecast_rolling(df_training_set['usd'], df_full_actual_set['usd']),
+    'var_static': model_VAR_forecast_static(df_training_set, df_full_actual_set),
+    'var_rolling': model_VAR_forecast_rolling(df_training_set, df_full_actual_set)
+    }).pipe(lambda df: df[df.index>=dt_training])
 
-print(model_VAR_forecast_rolling(df_daily_forecasting))
+usd_dataset.to_csv("./usd_dataset.csv")
+
+###################################ARIMA Model
+
+ax = df.eval('forecast = forecast.shift(...)')[['actual', 'forecast']].plot()
+plt.to_fig(...)
+plt.show()
+
+####################################Random Walk Model
+
 
 #plot graph
 
-def plot_graph(data_forecast, data_actual):
+def plot_graph(data_forecast, data_actual, data_forecast_2):
     plt.figure(figsize=(12, 6))
     plt.plot(data_forecast.index, data_forecast, label='Forecast Values', color='blue', marker='o')
     plt.plot(data_actual.index, data_actual, label='Actual Values', color='red', marker='x')
+    plt.plot(data_forecast_2.index, data_forecast_2, label='VAR(P)', color='green', marker='v')
     plt.title('Rolling Forecast with AR(1) Model')
     plt.xlabel('Date')
     plt.ylabel('Value')
     plt.legend()
     plt.show()
-
-plot_graph(model_AR_forecast_rolling(df_daily_forecasting['usd']), df_daily_forecasting['usd'])
+plot_graph(model_AR_forecast_rolling(df_training_set['usd']), df_full_actual_set['usd'], model_VAR_forecast_rolling(df_training_set)['usd_forecast'])
 
 # Explaining performance: In-sample explaining power
 # Forecasting performance: Out-of-sample forecast: Return four measures: 1) RMSE ratio of model to benchmark, 2) Ratio of direction of change, 3) t-statistics that test the null of forecast errors with 0 mean, 4) number of times ... 
