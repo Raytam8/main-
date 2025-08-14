@@ -6,6 +6,8 @@ import json
 import matplotlib.pyplot as plt
 import holidays
 
+hi
+
 ###########################data 
 
 dt_TZ = '2005-06-20' # commencement of 7.75-7.85 target zone (three refinements https://www.hkma.gov.hk/eng/news-and-media/press-releases/2005/05/20050518-4/)
