@@ -255,3 +255,54 @@ plot_graph(model_AR_forecast_rolling(df_training_set['usd']), df_full_actual_set
 # Explaining performance: In-sample explaining power
 # Forecasting performance: Out-of-sample forecast: Return four measures: 1) RMSE ratio of model to benchmark, 2) Ratio of direction of change, 3) t-statistics that test the null of forecast errors with 0 mean, 4) number of times ... 
 # Train with 2005 to 2020, forecast 2020 to 2025 
+
+
+
+
+df_daily = pd.concat([
+    df_FX, df_MB, df_IL, df_EFBN_yield, df_HIBOR, df_HKDF, 
+    (process_df_EFB(df_EFB_91d, 91) + process_df_EFB(df_EFB_182d, 182) + process_df_EFB(df_EFB_28d, 28) + process_df_EFB(df_EFB_364d, 364))['yield_amount'].div(df_MB.eval('outstanding_efbn')).mul(365).rename('r_EFBN_t')
+], axis=1).astype('float').join(df_USIR).join(
+    df_MS.join(df_BS['liab_depcust_hkd']).eval('''
+    ipo_money_adj = 0
+    MZMd_t = savings_deposits_with_lb + demand_deposits_with_lb
+    MZM_t = MZMd_t + legal_tender_notes_coins_in_pub
+    MZMc_t = MZMd_t - ipo_money_adj
+    M_t = MZMc_t
+    HKDD_t = liab_depcust_hkd
+    ''')
+).eval('''
+E_t = hkd_fer_spot
+AB_t = aggr_balance_bf_disc_win
+AB_t1 = forecast_aggregate_bal_t1
+CI_t = cert_of_indebt
+EFBN_t = outstanding_efbn.mask(outstanding_efbn.diff().sub(-interest_payment).abs().gt(4500)).interpolate(limit_area='inside')
+r_EFBN_t = r_EFBN_t.interpolate(limit_area='inside')
+EMB_t = AB_t + EFBN_t
+ipo_short_rate_adj = 0
+if_t = hibor_overnight - ipo_short_rate_adj
+iU_t = DFEDTAR.combine_first(DFEDTARL + 0.1)
+iDW_t = iU_t - 0.1 + 0.5
+BaseRate_t = disc_win_base_rate
+HIBORON_t = hibor_overnight
+ΔFXO_t = market_activities
+ΔA_t = -interest_payment
+FXO_t = ΔFXO_t.cumsum()
+A_t = ΔA_t.cumsum()
+HKDD_t = HKDD_t.asfreq('D').interpolate()
+MZMc_t = MZMc_t.asfreq('D').interpolate()
+MZMd_t = MZMd_t.asfreq('D').interpolate()
+MZM_t = MZM_t.asfreq('D').interpolate()
+M_t = M_t.asfreq('D').interpolate()
+ΔFXO_to_M_t = ΔFXO_t / M_t
+ΔA_to_M_t = ΔA_t / M_t
+AB_to_M_t = AB_t / M_t
+EFBN_to_M_t = EFBN_t / M_t
+EMB_to_M_t = EMB_t / M_t
+MB_t = mb_bf_disc_win_total
+epoch_t = index.astype("int").div(1e16)
+epoch_exp_t = exp(epoch_t)
+''')
+
+
+
