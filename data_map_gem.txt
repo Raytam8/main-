@@ -1,0 +1,23 @@
+import csv
+import pandas as pd
+import numpy
+import os
+
+sc_pn = [] #create a csv matching stock code to filename
+csv_files1 = [f for f in os.listdir("./scrape_formal_notice") if f.lower().endswith('csv')]
+for file in csv_files1:
+    sc_pn.append(pd.read_csv(f'./scrape_formal_notice/{file}'))
+stockcode_listing_date = pd.concat(sc_pn).reset_index(drop=True).iloc[:, 1:] 
+
+stockcode_list_af2007 = pd.read_csv(f'./website_scrape_af2007.csv').rename(columns={'filename':'pdf_name'})
+
+mapped_af2007 = pd.merge(stockcode_list_af2007, stockcode_listing_date, on='pdf_name', how='left')
+mapped_af2007['stock_code'] = mapped_af2007['stock_code'].astype(str).str.lstrip('0')
+mapped_af2007 = mapped_af2007.drop_duplicates(subset=['pdf_name'], keep='first').pipe(lambda df: df.set_index(['stock_code'])).pipe(lambda df: df[~(df['shares_num'] == 1)])
+
+ref_gem = pd.read_csv('./gem_sc_ref.csv')
+ref_gem['stock_code'] = ref_gem['stock_code'].astype(str)
+ref_gem = ref_gem.pipe(lambda df: df.set_index(['stock_code']))
+
+merged = pd.merge(ref_gem, mapped_af2007, left_index=True, right_index=True, how='left')
+merged.to_csv('./gemv1.csv')

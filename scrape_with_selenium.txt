@@ -1,0 +1,414 @@
+import os
+import time
+import requests
+import selenium
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+import re
+
+start_year = [2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
+end_year = [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+start_year_2 = [2005, 2006]
+start_year_3 = [2007]
+
+def search_and_download_reports(start_year, end_year, download_folder):
+    
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+
+    actions = ActionChains(driver)
+    driver.get("https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")
+    window_rect = driver.get_window_rect()
+    window_width = window_rect['width']
+    window_height = window_rect['height']
+
+    screen_width = driver.execute_script("return window.screen.width;")
+    screen_height = driver.execute_script("return window.screen.height;")
+
+    for x in range(len(start_year)):
+
+        driver.get("https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")
+        if window_width != screen_width or window_height != screen_height:
+            print("Window is not full screen. Switching to full screen.")
+            driver.fullscreen_window()  
+        else:
+            print("Window is already full screen.")
+
+        allotment_button = driver.find_element(By.XPATH, "//a[text()='ALL']")
+        allotment_button.click()
+
+        headline_button = driver.find_element(By.XPATH, "//a[text()='Headline Category']")
+        headline_button.click()
+
+        all_button = driver.find_element(By.XPATH, "//div[@id = 'rbAfter2006']//div[@class = 'combobox-input-wrap']/a[text()='ALL']")
+        all_button.click()
+
+        listing_button = driver.find_element(By.XPATH, "//a[text()='Announcements and Notices']")
+        listing_button.click()
+
+        listing_button2 = driver.find_element(By.XPATH, "//a[text()='New Listings (Listed Issuers/New Applicants)']")
+        driver.execute_script("arguments[0].scrollIntoView();", listing_button2)
+        listing_button2.click()
+
+        listing_button3 = driver.find_element(By.XPATH, "//a[text()='Allotment Results']")
+        listing_button3.click()
+
+        start_button = driver.find_element(By.XPATH, "//input[@id = 'searchDate-From']")
+        start_button.click()
+
+        start_year_button = driver.find_element(By.XPATH, f"//button[text() = '{start_year[x]}']")
+        driver.execute_script("arguments[0].scrollIntoView();", start_year_button)
+        start_year_button.click()
+
+        start_month_button = driver.find_element(By.XPATH, "//button[@data-value = '5']")
+        start_month_button.click()
+        
+        start_date_button = driver.find_element(By.XPATH, "//button[@data-value = '25']")
+        actions.double_click(start_date_button).perform()
+
+        end_button = driver.find_element(By.XPATH, "//input[@id = 'searchDate-To']")
+        end_button.click()
+
+        end_year_button = driver.find_element(By.XPATH, f"//button[text() = '{end_year[x]}']")
+        driver.execute_script("arguments[0].scrollIntoView();", end_year_button)
+        end_year_button.click()
+
+        end_month_button = driver.find_element(By.XPATH, "//button[@data-value = '5']")
+        end_month_button.click()
+        
+        end_date_button = driver.find_element(By.XPATH, "//button[@data-value = '24']")
+        actions.double_click(end_date_button).perform()
+
+        search_button = driver.find_element(By.CSS_SELECTOR, "a.filter__btn-applyFilters-js")
+        search_button.click()
+
+        driver.fullscreen_window()
+
+        while True:
+
+            try: 
+                load_button = driver.find_element(By.XPATH, "//a[text() = 'LOAD MORE']")
+                load_button.send_keys(Keys.RETURN)
+                print('pressed')
+                time.sleep(1)
+
+            except Exception as e:
+                break
+
+        driver.execute_script("window.scrollTo(0, 0);")
+        
+        time.sleep(1)
+
+        rows = driver.find_elements(By.XPATH, "//tbody[@aria-live='polite']//div[@class='doc-link']")
+
+        for row in rows:
+            try:
+                link_element = row.find_element(By.XPATH, ".//a[@href]")
+                link_url = link_element.get_attribute("href") 
+
+                if link_url.endswith(".pdf"):
+                    response = requests.get(link_url)
+            
+                    if response.status_code == 200:
+                        filename = os.path.join(download_folder, link_url.split("/")[-1]) 
+                        with open(filename, 'wb') as pdf_file:
+                            pdf_file.write(response.content)
+                        print(f"Downloaded: {filename}") 
+                    else:
+                        print(f"Failed to download: {link_url} (Status code: {response.status_code})")
+                
+                elif link_url.endswith(".htm") or link_url.endswith(".html"):
+                    
+                    html_response = requests.get(link_url)
+
+                    soup = BeautifulSoup(html_response.content, 'html.parser')
+                    font_tag = soup.find('a', string=lambda text: text and re.search(r'summary', text, re.IGNORECASE))
+                    html_file_link_url = font_tag.get('href')
+
+                    if html_file_link_url:
+                        base_url = "/".join(link_url.split("/")[:-1])
+                        html_final_url = base_url + "/" + html_file_link_url
+                        response2 = requests.get(html_final_url)
+                        url_name = html_final_url.split("/")[-2] + ".pdf"
+                        filename2 = os.path.join(download_folder, url_name)
+                        with open(filename2, 'wb') as pdf2_file:
+                            pdf2_file.write(response2.content)
+                        print(f"Downloaded: {filename2}")
+
+                    else:
+                       print('cannot find link')
+
+            except Exception as e:
+                print("Timeout: One of the elements was not found within the specified time.")
+                      
+    driver.quit()
+
+def search_and_download_reports_before_2007(start_year_2, download_folder):
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+
+    actions = ActionChains(driver)
+    driver.get("https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")
+    window_rect = driver.get_window_rect()
+    window_width = window_rect['width']
+    window_height = window_rect['height']
+
+    screen_width = driver.execute_script("return window.screen.width;")
+    screen_height = driver.execute_script("return window.screen.height;")
+
+    for x in range(len(start_year_2)):
+
+        driver.get("https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")
+        if window_width != screen_width or window_height != screen_height:
+            print("Window is not full screen. Switching to full screen.")
+            driver.fullscreen_window()  
+        else:
+            print("Window is already full screen.")
+
+        allotment_button = driver.find_element(By.XPATH, "//a[text()='ALL']")
+        allotment_button.click()
+
+        Document_button = driver.find_element(By.XPATH, "//a[text()='Document Type']")
+        Document_button.click()
+
+        all_button = driver.find_element(By.XPATH, "//div[@id = 'rbPrior2006']//div[@class = 'combobox-input-wrap']/a[text()='ALL']")
+        all_button.click()
+
+        listing_button = driver.find_element(By.XPATH, "//li[@class='droplist-item']/a[text()='IPO Allotment Results']")
+        listing_button.click()
+
+        start_button = driver.find_element(By.XPATH, "//input[@id = 'searchDate-From']")
+        start_button.click()
+
+        start_year_button = driver.find_element(By.XPATH, f"//button[text() = '{start_year_2[x]}']")
+        driver.execute_script("arguments[0].scrollIntoView();", start_year_button)
+        start_year_button.click()
+
+        start_month_button = driver.find_element(By.XPATH, "//b[@class='month']//button[@data-value = '0']")
+        start_month_button.click()
+        
+        start_date_button = driver.find_element(By.XPATH, "//b[@class='day']//button[@data-value = '1']")
+        actions.double_click(start_date_button).perform()
+
+        end_button = driver.find_element(By.XPATH, "//input[@id = 'searchDate-To']")
+        end_button.click()
+
+        end_year_button = driver.find_element(By.XPATH, f"//button[text() = '{start_year_2[x]}']")
+        driver.execute_script("arguments[0].scrollIntoView();", end_year_button)
+        end_year_button.click()
+
+        end_month_button = driver.find_element(By.XPATH, "//b[@class='month']//button[@data-value = '11']")
+        end_month_button.click()
+        
+        end_date_button = driver.find_element(By.XPATH, "//b[@class='day']//button[@data-value = '31']")
+        actions.double_click(end_date_button).perform()
+
+        search_button = driver.find_element(By.CSS_SELECTOR, "a.filter__btn-applyFilters-js")
+        search_button.click()
+
+        driver.fullscreen_window()
+
+        while True:
+
+            try:
+                load_button = driver.find_element(By.XPATH, "//a[text()='LOAD MORE']")
+                load_button.send_keys(Keys.RETURN)
+                time.sleep(1)
+
+            except Exception as e:
+                break
+
+        driver.execute_script("window.scrollTo(0, 0);")
+        
+        time.sleep(1)
+
+        rows = driver.find_elements(By.XPATH, "//tbody[@aria-live='polite']//div[@class='doc-link']")
+
+        for row in rows:
+
+            try:
+                link_element = row.find_element(By.XPATH, ".//a[@href]")
+                link_url = link_element.get_attribute("href") 
+
+                if link_url.endswith(".pdf"):
+                    response = requests.get(link_url)
+            
+                    if response.status_code == 200:           
+                        filename = os.path.join(download_folder, link_url.split("/")[-1]) 
+                        
+                        with open(filename, 'wb') as pdf_file:
+                            pdf_file.write(response.content)
+                        print(f"Downloaded: {filename}") 
+
+                    else:
+                        print(f"Failed to download: {link_url} (Status code: {response.status_code})")
+                
+                elif link_url.endswith(".htm") or link_url.endswith(".html"):
+
+                    html_response = requests.get(link_url)
+
+                    if html_response.status_code == 200:
+                
+                        soup = BeautifulSoup(html_response.content, 'html.parser')
+                        font_tag = soup.find('font', string=lambda text: text and re.search(r'summary', text, re.IGNORECASE))
+                        
+                        if font_tag:
+                            html_link_url = font_tag.find_parent('a')['href']
+                            base_url = "/".join(link_url.split("/")[:-1])
+                            modified_link_url = "/".join(html_link_url.split("/")[1:])
+                            html_final_url = base_url + "/" + modified_link_url
+                            response2 = requests.get(html_final_url)
+                            url_name = html_final_url.split("/")[-2] + ".pdf"
+                            filename2 = os.path.join(download_folder, url_name) 
+                            with open(filename2, 'wb') as pdf2_file:
+                                pdf2_file.write(response2.content)
+                            print(f"Downloaded: {filename2}")
+                        else:
+                            print("Specific link not found in HTML page.")
+                    else:
+                        print("Failed to fetch HTML page")
+
+            except Exception as e:
+                print("Timeout: One of the elements was not found within the specified time.")
+        
+    driver.quit()
+
+def first_half_2007(start_year_3, download_folder):
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+
+    actions = ActionChains(driver)
+    driver.get("https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")
+    window_rect = driver.get_window_rect()
+    window_width = window_rect['width']
+    window_height = window_rect['height']
+
+    screen_width = driver.execute_script("return window.screen.width;")
+    screen_height = driver.execute_script("return window.screen.height;")
+
+    for x in range(len(start_year_3)):
+
+        driver.get("https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")
+        if window_width != screen_width or window_height != screen_height:
+            print("Window is not full screen. Switching to full screen.")
+            driver.fullscreen_window()  
+        else:
+            print("Window is already full screen.")
+
+        allotment_button = driver.find_element(By.XPATH, "//a[text()='ALL']")
+        allotment_button.click()
+
+        Document_button = driver.find_element(By.XPATH, "//a[text()='Document Type']")
+        Document_button.click()
+
+        all_button = driver.find_element(By.XPATH, "//div[@id = 'rbPrior2006']//div[@class = 'combobox-input-wrap']/a[text()='ALL']")
+        all_button.click()
+
+        listing_button = driver.find_element(By.XPATH, "//li[@class='droplist-item']/a[text()='IPO Allotment Results']")
+        listing_button.click()
+
+        start_button = driver.find_element(By.XPATH, "//input[@id = 'searchDate-From']")
+        start_button.click()
+
+        start_year_button = driver.find_element(By.XPATH, f"//button[text() = '{start_year_3[x]}']")
+        driver.execute_script("arguments[0].scrollIntoView();", start_year_button)
+        start_year_button.click()
+
+        start_month_button = driver.find_element(By.XPATH, "//b[@class='month']//button[@data-value = '0']")
+        start_month_button.click()
+        
+        start_date_button = driver.find_element(By.XPATH, "//b[@class='day']//button[@data-value = '1']")
+        actions.double_click(start_date_button).perform()
+
+        end_button = driver.find_element(By.XPATH, "//input[@id = 'searchDate-To']")
+        end_button.click()
+
+        end_year_button = driver.find_element(By.XPATH, f"//button[text() = '{start_year_3[x]}']")
+        driver.execute_script("arguments[0].scrollIntoView();", end_year_button)
+        end_year_button.click()
+
+        end_month_button = driver.find_element(By.XPATH, "//b[@class='month']//button[@data-value = '5']")
+        end_month_button.click()
+        
+        end_date_button = driver.find_element(By.XPATH, "//b[@class='day']//button[@data-value = '24']")
+        actions.double_click(end_date_button).perform()
+
+        search_button = driver.find_element(By.CSS_SELECTOR, "a.filter__btn-applyFilters-js")
+        search_button.click()
+
+        driver.fullscreen_window()
+
+        while True:
+
+            try:
+                load_button = driver.find_element(By.XPATH, "//a[text()='LOAD MORE']")
+                load_button.send_keys(Keys.RETURN)
+                time.sleep(1)
+
+            except Exception as e:
+                break
+
+        driver.execute_script("window.scrollTo(0, 0);")
+        
+        time.sleep(1)
+
+        rows = driver.find_elements(By.XPATH, "//tbody[@aria-live='polite']//div[@class='doc-link']")
+
+        for row in rows:
+
+            try:
+                link_element = row.find_element(By.XPATH, ".//a[@href]")
+                link_url = link_element.get_attribute("href") 
+
+                if link_url.endswith(".pdf"):
+                    response = requests.get(link_url)
+            
+                    if response.status_code == 200:           
+                        filename = os.path.join(download_folder, link_url.split("/")[-1]) 
+                        
+                        with open(filename, 'wb') as pdf_file:
+                            pdf_file.write(response.content)
+                        print(f"Downloaded: {filename}") 
+
+                    else:
+                        print(f"Failed to download: {link_url} (Status code: {response.status_code})")
+                
+                elif link_url.endswith(".htm") or link_url.endswith(".html"):
+
+                    html_response = requests.get(link_url)
+
+                    if html_response.status_code == 200:
+                
+                        soup = BeautifulSoup(html_response.content, 'html.parser')
+                        font_tag = soup.find('font', string=lambda text: text and re.search(r'summary', text, re.IGNORECASE))
+                        
+                        if font_tag:
+                            html_link_url = font_tag.find_parent('a')['href']
+                            base_url = "/".join(link_url.split("/")[:-1])
+                            modified_link_url = "/".join(html_link_url.split("/")[1:])
+                            html_final_url = base_url + "/" + modified_link_url
+                            response2 = requests.get(html_final_url)
+                            url_name = html_final_url.split("/")[-2] + ".pdf"
+                            filename2 = os.path.join(download_folder, url_name) 
+                            with open(filename2, 'wb') as pdf2_file:
+                                pdf2_file.write(response2.content)
+                            print(f"Downloaded: {filename2}")
+                        else:
+                            print("Specific link not found in HTML page.")
+                    else:
+                        print("Failed to fetch HTML page")
+
+            except Exception as e:
+                print("Timeout: One of the elements was not found within the specified time.")
+        
+    driver.quit()
+
+current_directory = os.getcwd()
+download_folder = os.path.join(current_directory, "Downloaded_pdfs_before_2007")
+search_and_download_reports_before_2007(start_year_2, download_folder)
+first_half_2007(start_year_3, download_folder)
+#search_and_download_reports(start_year, end_year, download_folder)
+
+

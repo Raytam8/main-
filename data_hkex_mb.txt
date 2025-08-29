@@ -1,0 +1,67 @@
+import os
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+'''
+def download_csv(download_path):
+    response = requests.get("https://www2.hkexnews.hk/New-Listings/New-Listing-Information/Main-Board?sc_lang=en")
+    soup = BeautifulSoup(response.content, 'html.parser')
+    tags1 = soup.find_all('div', class_='side-content__download')
+    for tag in tags1:
+        href = tag.find('a')['href']
+        url = "https://www2.hkexnews.hk" + href 
+        response = requests.get(url)
+        if href.lower().endswith('.xls'):
+            file_name = (url.split('/')[-1])[:-4] + ".csv"
+            with open(f"{download_path}/{file_name}", 'wb') as f:
+                f.write(response.content)
+            print(f"Downloaded xlxs: {file_name}")
+        if href.lower().endswith('.xlsx'):
+            file_name = (url.split('/')[-1])[:-5] + ".csv"
+            with open(f"{download_path}/{file_name}", 'wb') as f:
+                f.write(response.content)
+            print(f"Downloaded xlxs: {file_name}")
+'''
+download_path = "./test"
+#download_csv(download_path)
+
+def stack_csv_files_mb(folder_path_mb, output_file_mb):
+    files = [f for f in os.listdir(folder_path_mb) if f.lower().endswith('.csv')]
+    dt=[]
+    #, encoding='latin1'
+    for file in files:
+        try:
+            df = pd.read_csv(f"./test/{file}", encoding='Latin1').pipe(
+                    lambda df: df.iloc[1:, 1:10]
+                ).pipe(
+                    lambda df: df.set_axis(['stock_code', 'company', 'prospectus_date', 'listing_date', 'sponsors', 'reporting_company', 'valuers', 'funds_raised', 'subscription_price'], axis=1)
+                ).pipe(
+                    lambda df: df[~(df['Listing_Date'] == '"')]
+                ).pipe(
+                    lambda df: df[df['stock_code'].notna() & (df['stock_code'] != '')]
+                ).pipe(
+                    lambda df: df.assign(prospectus_date=pd.to_datetime(df['prospectus_date'], format='%d/%m/%Y'))
+                ).set_index(['stock_code','prospectus_date']).pipe(
+                    lambda df: df[df.index.get_level_values('prospectus_date').year>=2005]
+                )
+            print(df)
+            dt.append(df)
+            print(f"Loaded file: {file}")
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+    stacked_df = pd.concat(dt)
+    
+    try:
+        stacked_df.to_csv(output_file_mb)
+        print(f"Stacked CSV saved to '{output_file_mb}'")
+    except Exception as e:
+        print(f"Error saving CSV: {e}")
+
+folder_path_mb = './test'
+output_file_mb = './mainboard_output_v2.csv'   
+
+stack_csv_files_mb(folder_path_mb, output_file_mb)
+
+
+

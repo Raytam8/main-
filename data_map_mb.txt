@@ -1,0 +1,26 @@
+import csv
+import pandas as pd
+import numpy
+import os
+
+sc_pn = [] #create a csv matching stock code to filename
+csv_files1 = [f for f in os.listdir("./scrape_formal_notice") if f.lower().endswith('csv')]
+for file in csv_files1:
+    sc_pn.append(pd.read_csv(f'./scrape_formal_notice/{file}'))
+stockcode_refund_date = pd.concat(sc_pn).reset_index(drop=True).iloc[:, 1:] 
+
+stockcode_list_af2007 = pd.read_csv(f'./website_scrape_af2007.csv').rename(columns={'filename':'pdf_name'})
+stockcode_list_b42007 = pd.read_csv(f'./website_scrape_b42007.csv').rename(columns={'filename':'pdf_name'})
+
+mapped_af2007 = pd.merge(stockcode_list_af2007, stockcode_refund_date, on='pdf_name', how='left')
+mapped_af2007['prospectus_date'] = pd.to_datetime(mapped_af2007['prospectus_date'])
+mapped_af2007['stock_code'] = mapped_af2007['stock_code'].astype(str).str.lstrip('0')
+mapped_af2007 = mapped_af2007.drop_duplicates(subset=['pdf_name'], keep='first').pipe(lambda df: df.set_index(['stock_code', 'prospectus_date'])).pipe(lambda df: df[~(df['shares_num'] == 1)])
+
+ref_mb = pd.read_csv('./mb_sc_ref.csv')
+ref_mb['prospectus_date'] = pd.to_datetime(ref_mb['prospectus_date'])
+ref_mb['stock_code'] = ref_mb['stock_code'].astype(str)
+ref_mb = ref_mb.pipe(lambda df: df.set_index(['stock_code', 'prospectus_date']))
+
+merged = pd.merge(ref_mb, mapped_af2007, left_index=True, right_index=True, how='left')
+merged.to_csv('./finalv3.csv')

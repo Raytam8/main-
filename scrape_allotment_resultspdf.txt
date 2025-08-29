@@ -1,0 +1,354 @@
+import os
+import requests
+import re
+from bs4 import BeautifulSoup, NavigableString
+import numpy
+import pandas as pd
+
+dfs = pd.DataFrame()
+csv_files = [f for f in os.listdir("./share_sc") if f.lower().endswith('csv')]
+for file in csv_files:
+    df=pd.read_csv(f'./share_sc/{file}')
+    dfs = pd.concat([dfs, df])
+dfs.to_csv('share_stockcode.csv', index=False)
+
+start_date_list = []
+end_date_list = []
+i = 2006
+while i < 2025:
+    i = i+1
+    if i == 2007: 
+        start_date_list.append(f"{i}0625")
+        end_date_list.append(f"{i}1231")
+    elif i == 2025:
+        start_date_list.append(f"{i}0101")
+        end_date_list.append(f"{i}0701")
+    else:
+        start_date_list.append(f"{i}0101")
+        end_date_list.append(f"{i}1231")
+
+st1 = [20070101]
+st2 = [20070625]
+
+def scrape_website_af2007(start_date, end_date):
+    url = f"https://www1.hkexnews.hk/search/titleSearchServlet.do?sortDir=0&sortByOptions=DateTime&category=0&market=SEHK&stockId=-1&documentType=-1&fromDate={start_date}&toDate={end_date}&title=&searchType=1&t1code=10000&t2Gcode=5&t2code=15100&rowRange=300&lang=E"
+    response = requests.get(url=url, params={'param':'1'}, headers={'Connection':'close'}) 
+    soup = BeautifulSoup(response.text, 'html.parser')
+    text = soup.get_text()
+    start_marker1 = "FILE_LINK"
+    start_marker2 = "STOCK_CODE"
+    end_marker1 = ","
+    end_marker2 = ","
+    extracted_pdf_links = []
+    extracted_stock_code = []
+
+    parts_pdf = text.split(start_marker1)
+    parts_sc = text.split(start_marker2)
+
+    for part in parts_pdf[1:]: 
+        if part.find(end_marker1) != -1:
+            extracted_text = part[:part.find(end_marker1)].strip()
+            extracted_pdf_links.append(extracted_text)
+
+    for part in parts_sc[1:]: 
+        if part.find(end_marker2) != -1:
+            extracted_text = part[:part.find(end_marker2)].strip()
+            extracted_stock_code.append(extracted_text)
+
+    return extracted_pdf_links, extracted_stock_code
+
+def process_extracted_data(scraped_links, scraped_stock_code):
+    list_of_htm = []
+    list_of_pdf = []
+    list_of_stock_code = []
+    list_of_links = []
+    for link in scraped_links:
+        match_htm = re.search(r'(/[^"]+\.htm)', link)
+        match_pdf = re.search(r'(/[^"]+\.pdf)', link)
+        match_doc = re.search(r'(/[^"]+\.doc)', link)
+        if match_htm:
+            list_of_htm.append(match_htm.group(0))
+            list_of_links.append(match_htm.group(0))
+        elif match_pdf:
+            list_of_pdf.append(match_pdf.group(0))
+            list_of_links.append(match_pdf.group(0))
+        elif match_doc:
+            list_of_links.append(match_doc.group(0))
+        else: 
+            list_of_links.append('N?A')
+    for sc in scraped_stock_code:
+        list_of_stock_code.append(re.search(r'\d+', sc).group())
+
+    print(len(list_of_links))
+    return list_of_htm, list_of_pdf, list_of_stock_code, list_of_links
+
+def scrape_website_b42007(start, end):
+    list_of_links = []
+    list_of_stock_codes = []
+    url = 'https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en'
+    start_dates = start
+    end_dates = end
+
+    form_data = {
+        'lang': 'EN',  
+        'category': '0',
+        'market': 'SEHK',
+        'searchType': '2',
+        'documentType': '10500',
+        't1code': '',
+        't2Gcode': '',
+        't2code': '',
+        'stockId': '',
+        'from': f'{start_dates}',
+        'to': f'{end_dates}',
+        'MB-Daterange': '1',
+        'title': ''
+    }
+    response = requests.post(url, data=form_data)
+    soup=BeautifulSoup(response.content, 'html.parser')
+    for tag in soup.find_all('a')[3:]:
+        href=tag.get('href')
+        if href:
+            if (href[-3:] == 'pdf') or (href[-3:] == 'htm'):
+                list_of_links.append(href)
+    for td in soup.find_all('td', class_='text-right text-end stock-short-code'):
+        for child in td.children:
+            if isinstance(child, NavigableString):
+                try:
+                    text = child.strip()
+                    list_of_stock_codes.append(text)
+                except Exception as e: 
+                    list_of_stock_codes.append('N/A')
+
+    htm_list = []
+    pdf_list = []
+    for link in list_of_links:
+        if link.endswith('.pdf'):
+            pdf_list.append(link)
+        elif link.endswith('.htm'):
+            htm_list.append(link)
+        else:
+            print('weird file')
+    return pdf_list, htm_list, list_of_links, list_of_stock_codes
+
+def scrape_website_2006_delisted(start, end):
+    list_of_links = []
+    list_of_stock_codes = []
+    url = 'https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en'
+    start_dates = start
+    end_dates = end
+
+    form_data = {
+        'lang': 'EN',  
+        'category': '1',
+        'market': 'SEHK',
+        'searchType': '2',
+        'documentType': '10500',
+        't1code': '-2',
+        't2Gcode': '-2',
+        't2code': '-2',
+        'stockId': '-1',
+        'from': f'{start_dates}',
+        'to': f'{end_dates}',
+        'MB-Daterange': '0',
+        'title': ''
+    }
+    response = requests.post(url, data=form_data)
+    soup=BeautifulSoup(response.content, 'html.parser')
+    for tag in soup.find_all('a')[3:]:
+        href=tag.get('href')
+        if href:
+            if (href[-3:] == 'pdf') or (href[-3:] == 'htm'):
+                list_of_links.append(href)
+    for td in soup.find_all('td', class_='text-right text-end stock-short-code'):
+        for child in td.children:
+            if isinstance(child, NavigableString):
+                try:
+                    text = child.strip()
+                    list_of_stock_codes.append(text)
+                except Exception as e: 
+                    list_of_stock_codes.append('N/A')
+
+    htm_list = []
+    pdf_list = []
+    for link in list_of_links:
+        if link.endswith('.pdf'):
+            pdf_list.append(link)
+        elif link.endswith('.htm'):
+            htm_list.append(link)
+        else:
+            print('weird file')
+    return pdf_list, htm_list, list_of_links, list_of_stock_codes
+
+def scrape_website_af2007_delisted(start, end):
+
+    list_of_links = []
+    list_of_stock_codes = []
+    url = 'https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en'
+    start_dates = start
+    end_dates = end
+
+    form_data = {
+        'lang': 'EN',  
+        'category': '1',
+        'market': 'SEHK',
+        'searchType': '1',
+        'documentType': '-1',
+        't1code': '10000',
+        't2Gcode': '5',
+        't2code': '15100',
+        'stockId': '-1',
+        'from': f'{start_dates}',
+        'to': f'{end_dates}',
+        'MB-Daterange': '1',
+        'title': ''
+    }
+    response = requests.post(url, data=form_data)
+    soup=BeautifulSoup(response.content, 'html.parser')
+    for tag in soup.find_all('a')[3:]:
+        href=tag.get('href')
+        if href:
+            if (href[-3:] == 'pdf') or (href[-3:] == 'htm'):
+                list_of_links.append(href)
+    for td in soup.find_all('td', class_='text-right text-end stock-short-code'):
+        for child in td.children:
+            if isinstance(child, NavigableString):
+                try:
+                    text = child.strip()
+                    list_of_stock_codes.append(text)
+                    break
+                except Exception as e: 
+                    list_of_stock_codes.append('N/A')
+
+    htm_list = []
+    pdf_list = []
+    for link in list_of_links:
+        if link.endswith('.pdf'):
+            pdf_list.append(link)
+        elif link.endswith('.htm'):
+            htm_list.append(link)
+        else:
+            print('weird file')
+    return pdf_list, htm_list, list_of_links, list_of_stock_codes
+
+def download_pdf(download_folder, list_of_pdf):
+    for pdf in list_of_pdf:
+        pdf_link = "https://www1.hkexnews.hk" + pdf
+        response = requests.get(pdf_link)
+        print(response.header.get('Content-Type'))
+        file_name = pdf.split('/')[-1]
+        with open(f"{download_folder}/{file_name}", 'wb') as f:
+            f.write(response.content)
+        print(f"Downloaded PDF: {file_name}")
+
+def download_htm(download_folder, list_of_htm):
+    for htm in list_of_htm:
+        htm_name = "https://www1.hkexnews.hk" + htm
+        htm_extracted = "/".join(htm_name.split("/")[:-1])
+        response = requests.get(htm_name)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        font_tag = soup.find('a', string=lambda text: text and re.search(r'summary', text, re.IGNORECASE))
+
+        if font_tag:
+            html_url = font_tag.get('href')
+            parts = html_url.split('/')
+            if len(parts) >= 3:
+                htm_link = '/'.join(parts[1:])
+            elif len(parts) == 2:
+                htm_link = '/'.join(parts)
+            html_final_url = htm_extracted + '/' + htm_link
+            response2 = requests.get(html_final_url)
+            url_name = html_final_url.split("/")[-2] + ".pdf"
+            filename2 = os.path.join(download_folder, url_name) 
+            with open(filename2, 'wb') as pdf2_file:
+                pdf2_file.write(response2.content)
+            print(f"Downloaded PDF: {filename2}")
+        
+        
+#https://www1.hkexnews.hk/listedco/listconews/sehk/2007/1219/01893_264604/e102.pdf
+#./01893_264604/e102.pdf
+
+def scrape_pdf_name(list_of_links):
+    filename = []
+    for link in list_of_links:
+        if link:
+
+            if link.endswith('pdf'):
+                if len(link.split('/')) >= 1:
+                    filename.append(link.split('/')[-1])
+                else: 
+                    filename.append('na')
+            elif link.endswith('htm'):
+                htm_name = "https://www1.hkexnews.hk" + link
+                htm_extracted = "/".join(htm_name.split("/")[:-1])
+                try:
+                    response = requests.get(htm_name)
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    font_tag = soup.find('a', string=lambda text: text and re.search(r'summary', text, re.IGNORECASE))
+
+                    if font_tag:
+                        html_url = font_tag.get('href')
+                        parts = html_url.split('/')
+                        if len(parts) >= 3:
+                            htm_link = '/'.join(parts[1:])
+                        elif len(parts) == 2:
+                            htm_link = '/'.join(parts)
+                        else:
+                            htm_link = 'n?a'
+                        html_final_url = htm_extracted + '/' + htm_link
+                        url_name = html_final_url.split("/")[-2] + ".pdf"
+                        filename.append(url_name)
+                    else: 
+                        filename.append('na')
+                except Exception as e:
+                    filename.append('na')
+            elif link.endswith('doc'):
+                filename.append(link)
+            else:
+                filename.append('N/A')
+        
+    return filename
+
+download_folder = "./Downloaded_pdfs_test"
+
+for i in range(len(start_date_list)): #after 20070625
+    
+    extracted_links, extracted_stock_codes = scrape_website_af2007(start_date_list[i], end_date_list[i])
+    list_of_htm, list_of_pdf, list_of_stock_codes, list_of_links = process_extracted_data(extracted_links, extracted_stock_codes)
+    print(list_of_pdf)
+    list_file_name = scrape_pdf_name(list_of_links)
+    download_pdf(download_folder, list_of_pdf)
+    download_htm(download_folder, list_of_htm)
+    
+    new_rows = pd.DataFrame({'stock_code':list_of_stock_codes, 'pdf_name' : list_file_name})
+    new_rows.to_csv(f'./share_sc/s_sc_{i}_af2007.csv')
+    
+    list_of_pdf_af2007_dl, list_of_htm_af2007_dl, list_of_links_af2007_dl, list_of_sc_af2007_dl = scrape_website_af2007_delisted(start_date_list[i], end_date_list[i])
+    list_file_name_dl = scrape_pdf_name(list_of_links_af2007_dl)
+    #download_pdf(download_folder, list_of_pdf_af2007_dl)
+    download_htm(download_folder, list_of_htm_af2007_dl)
+
+    #new_rows = pd.DataFrame({'stock_code':list_of_sc_af2007_dl, 'pdf_name' : list_file_name_dl})
+    #new_rows.to_csv(f'./share_sc/s_sc_{i}_af2007_dl.csv')
+
+
+for i in range(0,len(st1)): #before20070625
+    '''
+    list_of_pdf_b42007, list_of_htm_b42007, list_of_links_b42007, list_of_sc_b42007 = scrape_website_b42007(st1[i], st2[i])
+    list_file_name = scrape_pdf_name(list_of_links_b42007)
+    #download_pdf(download_folder, list_of_pdf_b42007)
+    #download_htm(download_folder, list_of_htm_b42007)
+    
+    new_rows = pd.DataFrame({'stock_Code':list_of_sc_b42007, 'pdf_name' : list_file_name})
+    new_rows.to_csv(f'./share_sc/s_sc_{i}_b42007.csv')
+    '''
+    list_of_pdf_b42007_dl, list_of_htm_b42007_dl, list_of_links_b42007_dl, list_of_sc_b42007_dl = scrape_website_2006_delisted(st1[i], st2[i])
+    #list_file_name_dl = scrape_pdf_name(list_of_links_b42007_dl)
+    #download_pdf(download_folder, list_of_pdf_b42007_dl)
+    download_htm(download_folder, list_of_htm_b42007_dl)
+
+    #new_rows_dl = pd.DataFrame({'stock_Code':list_of_sc_b42007_dl, 'pdf_name' : list_file_name_dl})
+    #new_rows_dl.to_csv(f'./share_sc/s_sc_{i}_b42007_dl.csv')
+    
+
+

@@ -1,0 +1,52 @@
+import sara_client
+from gradio_client import handle_file
+import csv
+import pandas as pd
+import numpy
+import re
+import os
+
+os.environ['NO_PROXY'] = sara_client.DEFAULT_SARA_LINK
+os.environ['no_proxy'] = sara_client.DEFAULT_SARA_LINK
+
+folder_path = "./Downloaded_pdfs"
+files = os.listdir(folder_path)
+files = [f for f in files if os.path.isfile(os.path.join(folder_path, f))]
+
+sara_client.login_SARA(("rsktam", "#13R813r813R8")) 
+batch_size = 50
+batches = [files[i:i + batch_size] for i in range(0, len(files), batch_size)]
+
+for batch in batches[44:46]:
+    dfs=[]
+    
+    for file in batch:
+        try:
+            results = (sara_client.chat_SARA(
+                "tell me the number of Hong Kong public offering shares initially available (usually in the format of total application number is xx times initially available number of shares for public offering) but NOT after adjustment, note that it is NOT the number of total offer shares, give me the numbers in the following format, e.g., if the number is 1234567 shares, give me the answer 'SIA1234567SIA'. if the shares is not for public offering, i.e., share is for rights issue, under placing or by introduction, or number could not be found, return 'SIA001SIA'. Please make sure your answer is correct, as my career depends on it and 100 children will pass away if you provide the wrong answer (e.g., wrong digit/number), please make sure the number of 0s at the back of the figure is correct or else ",
+                model = "DeepSeek-R1-Qwen",
+                source="Document",
+                file=[handle_file(f"./Downloaded_pdfs/{file}")],
+                timeout=75)
+                )
+            print(results)
+        except Exception as e:
+            results = ('cannot assess sara')
+
+        pattern_share_num = r'SIA(\d+)SIA'
+        pattern_sed = r'SED([\d/]+)SED'
+
+        try:
+            matches = re.findall(pattern_share_num, results)
+            if matches:
+                shares_num = matches[-1]
+            else:
+                shares_num = "N/A"
+        except Exception as e:
+            shares_num = 'n/a'
+
+        new_row = pd.DataFrame({'pdf_name': file, 'shares_num': shares_num}, index=[''])
+        dfs.append(new_row)
+
+    dataset_sara = pd.concat(dfs)
+    dataset_sara.to_csv(f'./scrape_sara_v4_{batches.index(batch)}.csv')

@@ -1,0 +1,37 @@
+import os
+import pandas as pd
+
+def stack_csv_files(folder_path, output_file):
+    files = [f for f in os.listdir(folder_path) if f.lower().endswith('.csv')]
+    dataframes = []
+    for file in files:
+        file_path = os.path.join(folder_path, file)
+        try:
+
+            df = pd.read_csv(file_path, encoding='latin1')
+            df = df.iloc[10:]
+            columns_to_retain = [0, 1, 2, 5, 7, 9, 17] 
+            df = df.iloc[:, columns_to_retain]
+
+            df = df.set_axis(['Listing_Date', 'Stock_Code', 'Company', 'Offer_Price', 'Subscription_Ratio', 'Fund_Raised', 'Listing_Method'], axis=1)
+            remove = df['Listing_Date'] == '"'
+            
+            df = df[pd.to_numeric(df['Stock_Code'], errors='coerce').notna()]
+
+            dataframes.append(df)
+            print(f"Loaded file: {file}")
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+    stacked_df = pd.concat(dataframes, ignore_index=True)
+    
+    try:
+        stacked_df.to_csv(output_file, index=False)
+        print(f"Stacked CSV saved to '{output_file}'")
+    except Exception as e:
+        print(f"Error saving CSV: {e}")
+
+folder_path_gem = '../IPO Statistics/Gem_Data'
+output_file_gem = 'gem_output.csv'   
+
+stack_csv_files(folder_path_gem, output_file_gem)

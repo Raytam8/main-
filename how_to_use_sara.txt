@@ -1,0 +1,20 @@
+# Use this code to install SARA API:
+AppData\Local\Programs\Python\Python313\python.exe -m pip install sara-client --extra-index-url https://dpsauatdk01.intra.hkma.gov.hk:8180/repository/hkmard-hosted/simple --extra-index-url https://viewer:viewer@dpsauatdk01.intra.hkma.gov.hk:8180/repository/pypi-proxy/simple --trusted-host dpsauatdk01.intra.hkma.gov.hk:8180
+
+# Import in Python environment using the following code: 
+import sara_client 
+from gradio_client import handle_file
+import os
+os.environ['NO_PROXY'] = sara_client.DEFAULT_SARA_LINK
+os.environ['no_proxy'] = sara_client.DEFAULT_SARA_LINK
+
+sara-client.login_SARA(("username","password"))
+
+result = sara_client.chat_SARA(
+    "Prompt",
+    source="Document",
+    file=[handle_file('filepath')],
+    timeout=600,
+)
+# result is in string format
+# this code is used to upload pdfs file to SARA and ask it to extract info from the pdfs
